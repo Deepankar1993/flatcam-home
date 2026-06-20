@@ -13,6 +13,7 @@ MODULES = [
     "test_job_compiler",
     "test_job_runner",
     "test_presets",
+    "test_step_schema",
     "test_integration_parity",
 ]
 
