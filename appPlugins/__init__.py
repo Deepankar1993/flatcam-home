@@ -51,3 +51,4 @@ from appPlugins.ToolMarkers import ToolMarkers
 from appPlugins.ToolEtchCompensation import ToolEtchCompensation
 
 from appPlugins.ToolLaser import ToolLaser
+from appPlugins.ToolJobAutomation import ToolJobAutomation

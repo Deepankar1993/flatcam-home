@@ -7,6 +7,7 @@ from appGUI.preferences.tools.ToolsMarkersPrefGroupUI import ToolsMarkersPrefGro
 
 from appGUI.preferences.tools.ToolsTransformPrefGroupUI import ToolsTransformPrefGroupUI
 from appGUI.preferences.tools.ToolsCalculatorsPrefGroupUI import ToolsCalculatorsPrefGroupUI
+from appGUI.preferences.tools.ToolsJobAutomationPrefGroupUI import ToolsJobAutomationPrefGroupUI
 
 from appGUI.preferences.tools.ToolsPanelizePrefGroupUI import ToolsPanelizePrefGroupUI
 from appGUI.preferences.tools.ToolsFilmPrefGroupUI import ToolsFilmPrefGroupUI
@@ -54,6 +55,9 @@ class PluginsPreferencesUI(QtWidgets.QWidget):
         self.tools_calculators_group = ToolsCalculatorsPrefGroupUI(app=app)
         self.tools_calculators_group.setMinimumWidth(250)
 
+        self.tools_job_automation_group = ToolsJobAutomationPrefGroupUI(app=app)
+        self.tools_job_automation_group.setMinimumWidth(250)
+
         self.tools_transform_group = ToolsTransformPrefGroupUI(app=app)
         self.tools_transform_group.setMinimumWidth(250)
 
@@ -84,6 +88,7 @@ class PluginsPreferencesUI(QtWidgets.QWidget):
         self.vlay4.addWidget(self.tools_solderpaste_group)
         self.vlay4.addWidget(self.tools_markers_group)
         self.vlay4.addWidget(self.tools_calculators_group)
+        self.vlay4.addWidget(self.tools_job_automation_group)
         self.vlay4.addWidget(self.tools_sub_group)
 
         self.layout.addLayout(self.vlay)

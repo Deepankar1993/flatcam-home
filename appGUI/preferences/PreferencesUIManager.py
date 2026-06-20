@@ -564,6 +564,9 @@ class PreferencesUIManager(QtCore.QObject):
             "tools_panelize_constrainy": self.ui.plugin_pref_form.tools_panelize_group.py_height_entry,
             "tools_panelize_panel_type": self.ui.plugin_pref_form.tools_panelize_group.panel_type_radio,
 
+            # Job Automation Tool
+            "tools_job_auto_save_on_finish": self.ui.plugin_pref_form.tools_job_automation_group.save_on_finish_cb,
+
             # Calculators Tool
             "tools_calc_vshape_tip_dia": self.ui.plugin_pref_form.tools_calculators_group.tip_dia_entry,
             "tools_calc_vshape_tip_angle": self.ui.plugin_pref_form.tools_calculators_group.tip_angle_entry,

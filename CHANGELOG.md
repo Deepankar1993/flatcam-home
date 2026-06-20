@@ -8,6 +8,12 @@ CHANGELOG for FlatCAM Evo beta
 
 =================================================
 
+20.06.2026  (8.998.7 - Job Automation plugin)
+
+- Job Automation: added a new "Job Automation" plugin (Alt+J) that lets you pick Gerber/Excellon files, choose a built-in workflow preset (single-sided isolation, isolation+drill+cutout, NCC ground-plane), build a validated step plan, then execute all compiled Tcl commands in sequence with per-step status feedback (running / done / failed / skipped). The plan can be saved and reloaded as a .FlatJob JSON file. Execution runs on the GUI thread to honour Tcl thread-affinity; a Stop button aborts cleanly after the in-flight step completes. A preferences page (Plugins preferences tab) exposes the "save on finish" option.
+
+=================================================
+
 20.06.2026  (8.998.6 - clean shutdown / process leak)
 
 - Shutdown: fixed FlatCAM_Plus.exe processes (the main app plus its multiprocessing-pool workers) lingering after the window was closed. On quit the app used to recreate the pool during shutdown (whose worker processes and manager threads kept the app alive), it only close()d the pool instead of terminating it, and it waited on worker threads with no timeout so a single stuck task blocked exit forever. The pool is now terminated (not recreated) on quit, pool resets terminate old workers instead of leaking them, and worker-thread shutdown is time-bounded. The app now exits cleanly and its child processes are released.

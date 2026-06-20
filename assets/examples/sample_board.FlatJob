@@ -1,0 +1,178 @@
+{
+  "format": "FlatJob",
+  "version": 1,
+  "name": "Sample single-sided board",
+  "units": "MM",
+  "profile": {
+    "name": "GRBL 0.1mm V-bit",
+    "units": "MM",
+    "settings": {
+      "isolate": {
+        "dia": 0.1,
+        "passes": 2,
+        "overlap": 10.0,
+        "combine": true
+      },
+      "cncjob": {
+        "z_cut": -0.05,
+        "z_move": 2.0,
+        "feedrate": 120.0,
+        "pp": "default"
+      },
+      "drillcncjob": {
+        "drillz": -1.7,
+        "travelz": 2.0,
+        "pp": "default"
+      },
+      "cutout": {
+        "dia": 1.0,
+        "margin": 0.0,
+        "gapsize": 3.0,
+        "gaps": "4"
+      }
+    }
+  },
+  "steps": [
+    {
+      "id": null,
+      "type": "open_gerber",
+      "label": "Open Top Copper",
+      "enabled": true,
+      "side": "top",
+      "params": {
+        "file": "files/top.gbr",
+        "outname": "top"
+      }
+    },
+    {
+      "id": null,
+      "type": "open_excellon",
+      "label": "Open Drills",
+      "enabled": true,
+      "side": "top",
+      "params": {
+        "file": "files/drill.drl",
+        "outname": "drl"
+      }
+    },
+    {
+      "id": null,
+      "type": "open_gerber",
+      "label": "Open Outline",
+      "enabled": true,
+      "side": "top",
+      "params": {
+        "file": "files/edge.gbr",
+        "outname": "edge"
+      }
+    },
+    {
+      "id": null,
+      "type": "isolate",
+      "label": "Isolate top",
+      "enabled": true,
+      "side": "top",
+      "params": {
+        "name": "top",
+        "outname": "top_iso",
+        "dia": 0.1,
+        "passes": 2,
+        "overlap": 10.0,
+        "combine": true
+      }
+    },
+    {
+      "id": null,
+      "type": "cncjob",
+      "label": "CNC Job top",
+      "enabled": true,
+      "side": "top",
+      "params": {
+        "name": "top_iso",
+        "outname": "top_cnc",
+        "z_cut": -0.05,
+        "z_move": 2.0,
+        "feedrate": 120.0,
+        "pp": "default"
+      }
+    },
+    {
+      "id": null,
+      "type": "export_gcode",
+      "label": "Export top",
+      "enabled": true,
+      "side": "top",
+      "params": {
+        "name": "top_cnc",
+        "filename": "output\\top_iso.gcode"
+      }
+    },
+    {
+      "id": null,
+      "type": "drillcncjob",
+      "label": "Drill CNC Job",
+      "enabled": true,
+      "side": "top",
+      "params": {
+        "name": "drl",
+        "drilled_dias": "all",
+        "outname": "drl_cnc",
+        "drillz": -1.7,
+        "travelz": 2.0,
+        "pp": "default"
+      }
+    },
+    {
+      "id": null,
+      "type": "export_gcode",
+      "label": "Export Drill",
+      "enabled": true,
+      "side": "top",
+      "params": {
+        "name": "drl_cnc",
+        "filename": "output\\drill.gcode"
+      }
+    },
+    {
+      "id": null,
+      "type": "cutout",
+      "label": "Cutout",
+      "enabled": true,
+      "side": "top",
+      "params": {
+        "name": "edge",
+        "outname": "edge_cut",
+        "dia": 1.0,
+        "margin": 0.0,
+        "gapsize": 3.0,
+        "gaps": "4"
+      }
+    },
+    {
+      "id": null,
+      "type": "cncjob",
+      "label": "CNC Job Cutout",
+      "enabled": true,
+      "side": "top",
+      "params": {
+        "name": "edge_cut",
+        "outname": "edge_cnc",
+        "z_cut": -0.05,
+        "z_move": 2.0,
+        "feedrate": 120.0,
+        "pp": "default"
+      }
+    },
+    {
+      "id": null,
+      "type": "export_gcode",
+      "label": "Export Cutout",
+      "enabled": true,
+      "side": "top",
+      "params": {
+        "name": "edge_cnc",
+        "filename": "output\\cutout.gcode"
+      }
+    }
+  ]
+}

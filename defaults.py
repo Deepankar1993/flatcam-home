@@ -644,6 +644,10 @@ class AppDefaults:
         "tools_panelize_constrainy": 290.0,
         "tools_panelize_panel_type": 'gerber',
 
+        # Job Automation Tool
+        "tools_job_auto_save_on_finish": True,
+        "tools_job_auto_output_dir": "",
+
         # Calculators Tool
         "tools_calc_vshape_tip_dia": 0.2,
         "tools_calc_vshape_tip_angle": 30,

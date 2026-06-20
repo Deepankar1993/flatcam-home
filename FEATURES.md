@@ -21,6 +21,7 @@
 6. [Preprocessors (G-code Post-Processors)](#preprocessors-g-code-post-processors)
 7. [Tcl Shell Commands](#tcl-shell-commands)
 8. [Preferences & Settings](#preferences--settings)
+9. [Auto-Save & Crash Recovery](#auto-save--crash-recovery)
 
 ---
 
@@ -533,6 +534,7 @@ All tools live in `appPlugins/`, inherit `AppTool` (`appTool.py`), are instantia
 ### Utilities
 
 - **ToolCalculators** (`Calculators`) — Provides PCB-related calculators, including V-shape engraving tool-tip cut-width vs. depth and electroplating area/current estimation.
+- **ToolJobAutomation** (`Job Automation`, `Alt+J`) — Batch PCB workflow automation: pick Gerber/Excellon input files, choose a built-in preset (single-sided isolation, isolation+drill+cutout, NCC ground-plane), validate and build a step plan, then execute all compiled Tcl commands in sequence with live per-step status. Plans are saveable/loadable as `.FlatJob` JSON files.
 - **ToolShell** (`Shell`) — The in-app Tcl command shell/console, exposing the `tclCommands/` scripting commands and command history for automating FlatCAM via text commands.
 
 ---
@@ -810,4 +812,77 @@ The Preferences dialog is assembled under `appGUI/preferences/` from `OptionUI`/
 
 ---
 
-*Generated from the FlatCAM Plus source tree (branch `Beta_8.998`). Line/file references reflect the state of the code at generation time.*
+## Auto-Save & Crash Recovery
+
+FlatCAM Evo auto-saves the current project to a dedicated recovery folder on a timer and, after an unclean shutdown (crash / power loss), offers to restore the last auto-saved state on the next launch — even if the project was never manually saved. The feature is implemented in `appHandlers/appAutoSave.py` (the `AppAutoSave` QObject + filesystem helpers) and wired into `appMain.py`.
+
+### Rationale
+
+- FlatCAM's existing auto-save plumbing was effectively broken for the case that matters most — losing work to a crash or power loss. `appMain.save_project_auto()` called `appIO.on_file_save_project()`, which pops a modal **"Save As" dialog** whenever `project_filename is None`. So for a never-saved project, the timer did nothing useful and could actively interrupt the user with a dialog rather than protecting their work.
+- There was no separate recovery target, no versioned backups, and no way to detect an unclean shutdown or offer a restore on the next launch — meaning unsaved projects had no safety net at all.
+- **Goal:** provide reliable, non-intrusive auto-save with crash recovery. Work must survive an unclean shutdown (crash / power loss) **even if the user never manually saved the project**, and on the next launch after an unclean exit the user is prompted to restore their last auto-saved state — all without ever requiring a prior manual save and without popping blocking dialogs during normal operation.
+
+### Key design decisions (locked)
+
+- **Full crash-recovery system** — versioned backups plus a restore-on-launch prompt, not just periodic re-saving.
+- **Separate recovery target directory** — snapshots go to a dedicated `recovery/` folder next to the existing FlatCAM user-data dir (`%APPDATA%\FlatCAM\recovery\` on Windows, `~/.FlatCAM/recovery/` otherwise; honors `portable=True` like the rest of the app). Snapshots use the exact `.FlatPrj` serialization from `appIO.save_project()`, so restoring is just a normal project open and the user's real project file is never overwritten.
+- **Versioned / rotated backups** — timestamped `autosave_YYYYMMDD_HHMMSS.FlatPrj` files written on a default **30-second** interval (`global_autosave_timeout` → `30000`), retaining the last **10** snapshots (`global_autosave_keep`, default 10) and pruning older ones automatically.
+- **Session-marker-based unclean-shutdown detection** — a `session.lock` marker (JSON: newest snapshot path + original `project_filename`) is created at startup and deleted on clean exit. Its presence at the next launch signals that the previous session did not exit cleanly.
+- **Restore-on-launch prompt** — if the marker is found from a prior unclean run with a valid newest snapshot, a modal dialog offers **Restore** (open the newest snapshot), **Discard** (delete snapshots + marker, start fresh), or **Keep files** (start fresh but leave snapshots, dropping the stale marker so the prompt doesn't reappear). If auto-save is disabled, no prompt and no snapshots.
+- **Silent worker-thread saves** — snapshots are written via the existing thread-safe serializer dispatched on a worker thread (`worker_task`), guarded by the `block_autosave` / `should_we_save` / `save_in_progress` flags. They never touch `project_filename`, never clear the user's manual dirty state, and surface only a subtle, non-blocking `Auto-saved ✓` status-bar flash via the `inform` signal. Failures are caught and logged to `log.txt` rather than nagging the user, leaving the last good snapshot intact.
+
+### Behavior — how snapshots are taken
+
+Auto-save is driven by a `QTimer` owned by the `AppAutoSave` QObject (`appHandlers/appAutoSave.py`). The object is created in `App.__init__` (`appMain.py:855`) and started immediately via `self.autosave.start()`.
+
+- **Timer / interval.** `start()` calls `update_interval()`, which (re)starts the timer only when `global_autosave` is `True`, using `global_autosave_timeout` (milliseconds) as the interval. `App.save_project_auto_update()` (`appMain.py:7864`) re-invokes `update_interval()` so that toggling the setting or changing the interval in Preferences takes effect live without restart.
+- **Tick → gating.** Each timeout fires `do_snapshot()`. It bails out early if the app is exiting (`self._exiting`) or unless ALL three app-level guards are satisfied (`appAutoSave.py:169`):
+  - `app.block_autosave is False` (no in-progress operation has suppressed auto-save),
+  - `app.should_we_save is True` (the project has unsaved changes — set `True` on edits, see `appMain.py:2488/4496/4515/4594`; initial class default is `False`),
+  - `app.save_in_progress is False` (no manual/other save running).
+- **Worker-thread save.** When the guards pass, `do_snapshot()` computes a timestamp (`datetime.now().strftime("%Y%m%d_%H%M%S")`), builds the target path, and dispatches the actual write to the worker pool by emitting `app.worker_task` with `{'fcn': self._snapshot_worker, 'params': [path]}` — so serialization never blocks the GUI thread.
+- **The serializer.** `_snapshot_worker()` calls `self.app.f_handlers.save_project(path, silent=True)` (`appHandlers/appIO.py:2780`). The `silent=True` flag suppresses the normal "Project saved to ..." status messages and the file-verification reopen path so the snapshot is written quietly (it honors `global_save_compressed` / `global_compression_level` like a normal project save). `save_project` itself sets/clears `app.save_in_progress`.
+- **Status message.** After a successful write the worker emits the Qt signal `app.inform` with `'[success] Auto-saved'` (Qt signal emission is thread-safe from the worker).
+- **Snapshot location.** Files live in a `recovery/` subfolder under the app data path: `recovery_dir(data_path) = <data_path>/recovery` (`appAutoSave.py:25`). Snapshots are named `autosave_<YYYYMMDD_HHMMSS>.FlatPrj` (`snapshot_path`, matching the glob `autosave_*.FlatPrj`). The directory is created on demand via `ensure_recovery_dir`.
+- **Version rotation (keep N).** After each successful snapshot, `_snapshot_worker` reads `global_autosave_keep` (default 10) and calls `rotate(data_path, keep)`. `rotate` lists snapshots sorted lexicographically (which equals chronological order because of the embedded timestamp) and deletes everything except the newest `keep` (`snaps[:-keep]`); `keep <= 0` deletes all. So at most N recovery files are retained, oldest pruned first.
+
+### Crash detection & recovery flow
+
+Crash detection uses a single marker file `session.lock` inside the `recovery/` directory (`_marker_path`), holding JSON `{"snapshot": <path or null>, "project_filename": <current project file>}`.
+
+- **Marker written at startup.** During app startup, after the GUI is built, `appMain.py:1431-1434` runs (only when `global_autosave` is `True`): first `check_autosave_recovery()` (handling any leftover marker from a previous run), then `create_session_marker()`, which ensures `recovery/` exists and writes a fresh marker with `snapshot=None` and the current `project_filename`.
+- **Marker updated on each snapshot.** `_snapshot_worker` calls `write_marker(data_path, path, project_filename)` after every successful snapshot, so the marker always points at the most recent autosave file. The presence of this marker while the app runs is the "I am alive / did not exit cleanly" sentinel.
+- **Cleared on clean exit.** On a normal shutdown (`appMain.py:3885-3886`) the app calls `self.autosave.stop()` then `self.autosave.mark_clean_exit()`. `mark_clean_exit()` sets `_exiting = True` and calls `clear_recovery()`, which removes ALL snapshot files AND the `session.lock` marker. A clean exit therefore leaves the `recovery/` dir empty and no marker.
+- **Leftover marker → recovery prompt.** On the next launch, `check_autosave_recovery()` (`appMain.py:7869`) reads the marker via `self.autosave.check_for_recovery()` (`read_marker`). If no marker exists (clean prior exit) it returns silently. If a marker exists, it means the previous session did not clean up = an unclean/crash exit. It resolves the snapshot to restore (`marker["snapshot"]`, falling back to `newest_snapshot(data_path)`); if that file is missing/stale it just calls `mark_clean_exit()` to clear the dir and returns.
+- **The dialog.** Otherwise it shows a warning `QMessageBox` titled "Restore Auto-Saved Project" ("FlatCAM did not shut down cleanly. / Restore your last auto-saved project?") with three buttons, default = Restore:
+  - **Restore** → `f_handlers.open_project(snap)` loads the snapshot and emits "Auto-saved project restored." (the fresh marker created right after at startup then governs the new session).
+  - **Discard** → `mark_clean_exit()` deletes the snapshots and marker.
+  - **Keep files** → `drop_marker()` removes only `session.lock` (via `clear_marker`) but leaves snapshot files on disk, so the user won't be re-prompted next launch yet the autosave files remain available manually.
+
+### Settings
+
+The three preference keys are defined in `defaults.py` (`factory_defaults`, lines 99-101):
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `global_autosave` | bool | `False` | Master enable for auto-save & crash recovery. Gates timer start in `update_interval()` and the startup marker/recovery check. |
+| `global_autosave_timeout` | int (milliseconds) | `30000` (30 s) | `QTimer` interval between auto-save snapshot attempts. |
+| `global_autosave_keep` | int | `10` | Number of recovery snapshot files to retain; `rotate()` deletes older ones after each save. |
+
+These are exposed in **Preferences → General → App Preferences**, under the "Save Settings" group (purple header), in `appGUI/preferences/general/GeneralAppPrefGroupUI.py`:
+
+- `self.autosave_cb` — "Enable Auto Save" checkbox (binds `global_autosave`), `GeneralAppPrefGroupUI.py:319`.
+- `self.autosave_entry` — "Interval" `FCSpinner` in milliseconds (binds `global_autosave_timeout`), range 0–9999999, line 329. Its tooltip notes that auto-save writes a crash-recovery snapshot to the recovery folder and does NOT overwrite the user's project file.
+- `self.autosave_keep_entry` — "Keep backups" `FCSpinner` (binds `global_autosave_keep`), range 1–999, wrapping, line 342; tooltip: "How many auto-save recovery files to keep. Older ones are deleted automatically."
+
+Relevant files (absolute):
+- `N:\Projects\Github\flatcam-home\appHandlers\appAutoSave.py`
+- `N:\Projects\Github\flatcam-home\appMain.py` (wiring at lines 79, 854-856, 1431-1434, 3885-3886, 7860-7902)
+- `N:\Projects\Github\flatcam-home\appHandlers\appIO.py` (`save_project`, line 2780; `silent` handling)
+- `N:\Projects\Github\flatcam-home\defaults.py` (lines 99-101)
+- `N:\Projects\Github\flatcam-home\appGUI\preferences\general\GeneralAppPrefGroupUI.py` (lines 319-352)
+
+
+---
+
+*Generated from the FlatCAM Evo source tree (branch `Beta_8.998`). Line/file references reflect the state of the code at generation time.*

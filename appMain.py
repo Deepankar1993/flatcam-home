@@ -1039,6 +1039,7 @@ class App(QtCore.QObject):
         self.laser_tool = None
         self.paste_tool = None
         self.calculator_tool = None
+        self.job_automation_tool = None
         self.rules_tool = None
         self.sub_tool = None
         self.move_tool = None
@@ -1722,6 +1723,10 @@ class App(QtCore.QObject):
         self.calculator_tool = ToolCalculator(self)
         self.calculator_tool.install(icon=QtGui.QIcon(self.resource_location + '/calculator32.png'), separator=True)
 
+        self.job_automation_tool = ToolJobAutomation(self)
+        self.job_automation_tool.install(icon=QtGui.QIcon(self.resource_location + '/calculator32.png'),
+                                         pos=self.ui.menu_plugins, separator=True)
+
         self.sub_tool = ToolSub(self)
         self.sub_tool.install(icon=QtGui.QIcon(self.resource_location + '/sub32.png'),
                               pos=self.ui.menu_plugins, separator=True)
@@ -1830,6 +1835,7 @@ class App(QtCore.QObject):
             self.laser_tool,
             self.paste_tool,
             self.calculator_tool,
+            self.job_automation_tool,
             self.rules_tool,
             self.sub_tool,
             self.move_tool,
