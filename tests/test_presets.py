@@ -60,6 +60,42 @@ def test_all_presets_registered_and_buildable():
         assert jm.ERROR not in [s for s, _ in job.validate()]
 
 
+def test_build_from_objects_has_no_open_steps():
+    # object-mode: operate on already-loaded objects, referenced by name
+    job = pr.build_from_objects("iso_drill_cutout",
+                                {pr.TOP_COPPER: "copper top.gbr",
+                                 pr.DRILLS: "drills.drl",
+                                 pr.OUTLINE: "edge.gbr"},
+                                "out", None)
+    types = [s.type for s in job.steps]
+    assert jm.OPEN_GERBER not in types and jm.OPEN_EXCELLON not in types
+    assert jm.ISOLATE in types and jm.DRILLCNCJOB in types and jm.CUTOUT in types
+    assert types.index(jm.DRILLCNCJOB) < types.index(jm.CUTOUT)
+    probs = job.validate()
+    assert jm.ERROR not in [s for s, _ in probs]
+    # first isolate references the loaded object name directly
+    iso = [s for s in job.steps if s.type == jm.ISOLATE][0]
+    assert iso.params["name"] == "copper top.gbr"
+
+
+def test_build_from_objects_applies_profile_and_compiles():
+    prof = jm.Profile("GRBL", "MM", {jm.ISOLATE: {"dia": 0.1, "passes": 2},
+                                     jm.CNCJOB: {"z_cut": -0.05, "pp": "grbl"}})
+    job = pr.build_from_objects("iso_single", {pr.TOP_COPPER: "top.gbr"}, "out", prof)
+    lines = jc.compile_job_lines(job)
+    assert lines[0].startswith("isolate {top.gbr}")
+    assert "-dia 0.1" in lines[0] and "-passes 2" in lines[0]
+    assert any("-z_cut -0.05" in l and "-pp {grbl}" in l for l in lines)
+
+
+def test_build_from_objects_requires_top():
+    try:
+        pr.build_from_objects("ncc_groundplane", {}, "out", None)
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError when Top Copper object missing")
+
+
 def _run_all():
     fns = [v for k, v in sorted(globals().items())
            if k.startswith("test_") and callable(v)]

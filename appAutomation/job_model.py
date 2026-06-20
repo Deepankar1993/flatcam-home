@@ -159,13 +159,17 @@ class Job:
 
     FORMAT_VERSION = 1
 
-    __slots__ = ("name", "units", "steps", "profile")
+    __slots__ = ("name", "units", "steps", "profile", "external_objects")
 
-    def __init__(self, name="Untitled Job", units="MM", steps=None, profile=None):
+    def __init__(self, name="Untitled Job", units="MM", steps=None, profile=None,
+                 external_objects=None):
         self.name = name
         self.units = units
         self.steps = list(steps) if steps else []
         self.profile = profile
+        # Names of objects that already exist in the project (loaded by the user)
+        # and may be referenced by steps without an Open step producing them.
+        self.external_objects = set(external_objects) if external_objects else set()
 
     # --- step helpers ------------------------------------------------------ #
     def add_step(self, step):
@@ -188,7 +192,7 @@ class Job:
             problems.append((ERROR, "Job units must be one of %s (got %r)."
                              % (", ".join(VALID_UNITS), self.units)))
 
-        produced = set()       # object names available to later steps
+        produced = set(self.external_objects)  # pre-existing loaded objects + step outputs
         saw_drill = False
         saw_cutout_before_drill = False
 
@@ -279,6 +283,7 @@ class Job:
             "name": self.name,
             "units": self.units,
             "profile": self.profile.to_dict() if self.profile else None,
+            "external_objects": sorted(self.external_objects),
             "steps": [s.to_dict() for s in self.steps],
         }
 
@@ -290,6 +295,7 @@ class Job:
             units=d.get("units", "MM"),
             steps=[Step.from_dict(s) for s in d.get("steps", [])],
             profile=Profile.from_dict(prof) if prof else None,
+            external_objects=d.get("external_objects"),
         )
 
     def to_json(self, indent=2):
