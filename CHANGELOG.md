@@ -8,6 +8,11 @@ CHANGELOG for FlatCAM Evo beta
 
 =================================================
 
+18.07.2026  (8.998.8 - Laser plugin fixes)
+
+- Laser: fixed the laser mode (Dynamic M4 / Constant M3) - and the other preset-owned parameters: power, speed, passes, air assist - being reset to the material preset's values every time the plugin was opened. set_tool_ui() restored the last used values first and then applied the preset on top of them, so a manual choice of Constant (M3) was silently replaced by the preset's Dynamic (M4) and the exported LaserGRBL file was generated in the wrong mode. The preset is now applied first and the last used values are restored after it.
+- Laser: editing a parameter owned by a material preset (power, speed, passes, air assist, laser mode) now switches the preset combo to 'Custom', so the edit is preserved instead of being overwritten the next time the preset is applied.
+
 20.06.2026  (8.998.7 - Job Automation plugin)
 
 - Job Automation: added a new "Job Automation" plugin (Alt+J) that lets you pick Gerber/Excellon files, choose a built-in workflow preset (single-sided isolation, isolation+drill+cutout, NCC ground-plane), build a validated step plan, then execute all compiled Tcl commands in sequence with per-step status feedback (running / done / failed / skipped). The plan can be saved and reloaded as a .FlatJob JSON file. Execution runs on the GUI thread to honour Tcl thread-affinity; a Stop button aborts cleanly after the in-flight step completes. A preferences page (Plugins preferences tab) exposes the "save on finish" option.

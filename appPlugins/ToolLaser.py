@@ -44,6 +44,10 @@ class ToolLaser(AppTool):
         # the generated laser CNCJob object, used by the export button
         self.laser_cncjob = None
 
+        # True while the UI is being filled programmatically, so that loading values
+        # does not look like a manual edit and flip the preset to 'Custom'
+        self._loading_ui = False
+
         # #############################################################################################################
         # ######################################## Tool GUI ###########################################################
         # #############################################################################################################
@@ -135,12 +139,29 @@ class ToolLaser(AppTool):
 
         self.ui.reset_button.clicked.connect(self.set_tool_ui)
 
+        # Editing any parameter that a preset owns switches the preset to 'Custom', so the
+        # edit is not silently overwritten the next time the preset is (re)applied.
+        self.ui.power_entry.valueChanged.connect(self.on_param_edited)
+        self.ui.speed_entry.valueChanged.connect(self.on_param_edited)
+        self.ui.passes_entry.valueChanged.connect(self.on_param_edited)
+        self.ui.air_assist_cb.stateChanged.connect(self.on_param_edited)
+        self.ui.mode_radio.activated_custom.connect(self.on_param_edited)
+
     def set_tool_ui(self):
 
         self.clear_ui(self.layout)
         self.ui = LaserUI(layout=self.layout, app=self.app, presets=self.presets)
         self.pluginName = self.ui.pluginName
         self.connect_signals_at_init()
+
+        self._loading_ui = True
+
+        # The preset is applied FIRST: it fills the parameters it owns (power, speed,
+        # passes, air assist, laser mode). The last used values are restored after it, so
+        # a manual change - e.g. Constant (M3) instead of the preset's Dynamic (M4) -
+        # survives reopening the plugin instead of being reset by the preset.
+        self.ui.preset_combo.set_value(self.app.options["tools_laser_preset"])
+        self.on_preset_changed()
 
         # parameters from the application defaults
         self.ui.power_entry.set_value(int(self.app.options["tools_laser_power_pct"]))
@@ -165,14 +186,12 @@ class ToolLaser(AppTool):
         elif laser_pps:
             self.ui.pp_laser_combo.set_value(laser_pps[0])
 
-        # the preset; selecting it fills the parameters above unless it is 'Custom'
-        self.ui.preset_combo.set_value(self.app.options["tools_laser_preset"])
-        self.on_preset_changed()
-
         # power source; when the power is set in the sender (LaserGRBL) the Power entry is disabled
         power_source = 'app' if self.app.options["tools_laser_power_in_app"] else 'sender'
         self.ui.power_source_radio.set_value(power_source)
         self.on_power_source_changed(power_source)
+
+        self._loading_ui = False
 
         # select in the Source Object combobox the object that is selected in the Project Tab, if any
         obj = self.app.collection.get_active()
@@ -195,11 +214,28 @@ class ToolLaser(AppTool):
         if preset is None or preset_name == 'Custom':
             return
 
-        self.ui.power_entry.set_value(int(preset['power_pct']))
-        self.ui.speed_entry.set_value(float(preset['speed']))
-        self.ui.passes_entry.set_value(int(preset['passes']))
-        self.ui.air_assist_cb.set_value(bool(preset['air_assist']))
-        self.ui.mode_radio.set_value(preset['laser_mode'])
+        # filling the parameters from the preset is not a manual edit
+        was_loading = self._loading_ui
+        self._loading_ui = True
+        try:
+            self.ui.power_entry.set_value(int(preset['power_pct']))
+            self.ui.speed_entry.set_value(float(preset['speed']))
+            self.ui.passes_entry.set_value(int(preset['passes']))
+            self.ui.air_assist_cb.set_value(bool(preset['air_assist']))
+            self.ui.mode_radio.set_value(preset['laser_mode'])
+        finally:
+            self._loading_ui = was_loading
+
+    def on_param_edited(self, *args):
+        """A parameter owned by a preset was changed by hand: switch the preset to
+        'Custom' so the value is kept instead of being overwritten by the preset."""
+        if self._loading_ui:
+            return
+        if self.ui.preset_combo.get_value() == 'Custom':
+            return
+        if self.ui.preset_combo.findText('Custom') < 0:
+            return
+        self.ui.preset_combo.set_value('Custom')
 
     def on_power_source_changed(self, val):
         """When the power is set in the sender (LaserGRBL), the Power entry is greyed out."""
