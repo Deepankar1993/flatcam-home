@@ -534,7 +534,7 @@ All tools live in `appPlugins/`, inherit `AppTool` (`appTool.py`), are instantia
 ### Utilities
 
 - **ToolCalculators** (`Calculators`) — Provides PCB-related calculators, including V-shape engraving tool-tip cut-width vs. depth and electroplating area/current estimation.
-- **ToolJobAutomation** (`Job Automation`, `Alt+J`) — Batch PCB workflow automation: pick Gerber/Excellon input files, choose a built-in preset (single-sided isolation, isolation+drill+cutout, NCC ground-plane), validate and build a step plan, then execute all compiled Tcl commands in sequence with live per-step status. Plans are saveable/loadable as `.FlatJob` JSON files.
+- **ToolJobAutomation** (`Job Automation`, `Ctrl+Alt+J`) — Batch PCB workflow automation: pick Gerber/Excellon input files, choose a built-in preset (single-sided isolation, isolation+drill+cutout, NCC ground-plane), validate and build a step plan, then execute all compiled Tcl commands in sequence with live per-step status. Plans are saveable/loadable as `.FlatJob` JSON files.
 - **ToolShell** (`Shell`) — The in-app Tcl command shell/console, exposing the `tclCommands/` scripting commands and command history for automating FlatCAM via text commands.
 
 ---

@@ -182,7 +182,7 @@ class App(QtCore.QObject):
     # version = 1.0
     # full dotted version, kept in lockstep with the git tag / installer MyAppVersion;
     # used by Help -> Check for Updates to compare against the newest GitHub release tag
-    version_str = "8.998.11"
+    version_str = "8.998.12"
     version_date = "2026/7/18"
     beta = True
     engine = '3D'

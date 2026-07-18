@@ -102,7 +102,11 @@ class ToolJobAutomation(AppTool):
         self.app.ui.notebook.setTabText(2, _("Job Automation"))
 
     def install(self, icon=None, separator=None, **kwargs):
-        AppTool.install(self, icon, separator, shortcut='Alt+J', **kwargs)
+        # NOTE: 'Alt+J' collides with the pre-existing Copper Thieving tool
+        # (appPlugins/ToolCopperThieving.py) - that tool wins the ambiguous shortcut, so
+        # Job Automation never opened via keyboard. 'Ctrl+Alt+J' keeps the 'J' mnemonic
+        # without colliding with any shortcut in appPlugins/*.py.
+        AppTool.install(self, icon, separator, shortcut='Ctrl+Alt+J', **kwargs)
 
     def set_tool_ui(self):
         self.clear_ui(self.layout)

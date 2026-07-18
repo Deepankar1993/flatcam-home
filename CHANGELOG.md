@@ -8,6 +8,10 @@ CHANGELOG for FlatCAM Evo beta
 
 =================================================
 
+18.07.2026  (8.998.12 - Job Automation: fixed a keyboard shortcut collision)
+
+- Job Automation: the plugin's `Alt+J` shortcut silently never opened the panel, because it collided with the pre-existing Copper Thieving tool's own `Alt+J` shortcut (appPlugins/ToolCopperThieving.py) - Copper Thieving was registered first and won the ambiguous shortcut every time. Found by launching the freshly built exe and testing Alt+J directly: it opened Copper Thieving instead of Job Automation. Changed Job Automation's shortcut to `Ctrl+Alt+J`, which does not collide with any other plugin shortcut. The plugin remains reachable from the Plugins menu regardless.
+
 18.07.2026  (8.998.11 - Laser: export filename tagged with generation parameters)
 
 - Laser: the default filename offered by "Export for LaserGRBL" is now tagged with the parameters the job was generated with - power, speed, beam width, passes, and pass overlap (when passes > 1) - e.g. "board_laser_P40pct_S900mmmin_B0.09mm_1x.nc". When power is set in LaserGRBL instead of FlatCAM, the tag reads "Pfull" (the file is written at full power) rather than showing the disabled/irrelevant Power % field. Makes it possible to tell two exports of the same board apart by filename alone once several material settings have been tried.
