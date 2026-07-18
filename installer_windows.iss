@@ -3,7 +3,7 @@
 ; script with ISCC.exe to produce dist\FlatCAM_Plus_<version>_setup.exe.
 
 #define MyAppName "FlatCAM Plus"
-#define MyAppVersion "8.998.6"
+#define MyAppVersion "8.998.11"
 #define MyAppPublisher "FlatCAM Plus (Beta)"
 #define MyAppURL "https://github.com/Deepankar1993/FlatCAM-Plus"
 #define MyAppExeName "FlatCAM_Plus.exe"

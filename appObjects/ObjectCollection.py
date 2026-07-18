@@ -1083,7 +1083,21 @@ class ObjectCollection(QtCore.QAbstractItemModel):
         return obj_list
 
     def update_view(self):
-        self.dataChanged.emit(QtCore.QModelIndex(), QtCore.QModelIndex())   # noqa
+        # dataChanged() requires topLeft/bottomRight to be valid indices sharing the same
+        # parent; emitting it with two null QModelIndex() (as before) is invalid per the
+        # Qt model API and logged a "dataChanged() called with an invalid index range"
+        # warning on every call (name changes, plot enable/disable, plot refresh - i.e.
+        # constantly during normal use). Emit one valid, per-group range instead - same
+        # "refresh everything" intent, without violating the contract.
+        last_col = max(self.columnCount(QtCore.QModelIndex()) - 1, 0)
+        for row, group in enumerate(self.root_item.child_items):
+            child_count = group.child_count()
+            if not child_count:
+                continue
+            group_index = self.index(row, 0, QtCore.QModelIndex())
+            top_left = self.index(0, 0, group_index)
+            bottom_right = self.index(child_count - 1, last_col, group_index)
+            self.dataChanged.emit(top_left, bottom_right)
 
     def on_row_activated(self, index):
         if index.isValid():

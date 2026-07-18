@@ -43,6 +43,8 @@ class ToolLaser(AppTool):
 
         # the generated laser CNCJob object, used by the export button
         self.laser_cncjob = None
+        # the parameters used for the last generation, used to tag the export filename
+        self.laser_gen_params = None
 
         # True while the UI is being filled programmatically, so that loading values
         # does not look like a manual edit and flip the preset to 'Custom'
@@ -438,6 +440,17 @@ class ToolLaser(AppTool):
 
         self.laser_cncjob = cncjob
 
+        # remember the parameters used for THIS generation, so the export filename can
+        # be tagged with them (power/speed/beam/passes/overlap) - see _build_export_suffix()
+        self.laser_gen_params = {
+            'power_in_app': power_in_app,
+            'power_pct': power_pct,
+            'speed': speed,
+            'beam_width': beam_width,
+            'n_passes': n_passes,
+            'overlap': overlap,
+        }
+
         # remember the used parameters
         self.app.options['tools_laser_power_pct'] = power_pct
         self.app.options['tools_laser_power_max'] = power_max
@@ -480,14 +493,46 @@ class ToolLaser(AppTool):
 
         self._export_to_file(filename)
 
+    @staticmethod
+    def _fmt_num(val):
+        """Compact number formatting for filenames: whole numbers with no decimals,
+        otherwise up to 3 decimals with trailing zeros stripped (e.g. 900, 0.09, 12.5)."""
+        val = float(val)
+        if val == int(val):
+            return str(int(val))
+        return ('%.3f' % val).rstrip('0').rstrip('.')
+
+    def _build_export_suffix(self):
+        """Tag the export filename with the parameters used to generate the job, so the
+        file itself (as loaded in LaserGRBL) shows what it was burned with: power, speed,
+        beam width, passes and pass overlap."""
+        p = getattr(self, 'laser_gen_params', None)
+        if not p:
+            return ''
+        size_unit = 'mm' if str(self.app.app_units).upper() == 'MM' else 'in'
+        speed_unit = size_unit + 'min'
+
+        power_tag = ('P%spct' % self._fmt_num(p['power_pct'])) if p['power_in_app'] else 'Pfull'
+        parts = [
+            power_tag,
+            'S%s%s' % (self._fmt_num(p['speed']), speed_unit),
+            'B%s%s' % (self._fmt_num(p['beam_width']), size_unit),
+            '%sx' % self._fmt_num(p['n_passes']),
+        ]
+        if p['n_passes'] > 1:
+            parts.append('OV%spct' % self._fmt_num(p['overlap']))
+        return '_' + '_'.join(parts)
+
     def _default_export_filepath(self):
         """Build the default path the Export dialog opens at: a "Job" folder next to the
-        source (created if needed), with a file named after the source Gerber/Geometry."""
+        source (created if needed), with a file named after the source Gerber/Geometry and
+        tagged with the generation parameters (power/speed/beam/passes/overlap)."""
         src_name = getattr(self, 'laser_source_name', None)
         if src_name:
             default_name = str(src_name) + '_laser'
         else:
             default_name = str(self.laser_cncjob.obj_options['name'])
+        default_name += self._build_export_suffix()
 
         target_dir = None
         job_dir = getattr(self, 'laser_job_dir', None)

@@ -8,6 +8,23 @@ CHANGELOG for FlatCAM Evo beta
 
 =================================================
 
+18.07.2026  (8.998.11 - Laser: export filename tagged with generation parameters)
+
+- Laser: the default filename offered by "Export for LaserGRBL" is now tagged with the parameters the job was generated with - power, speed, beam width, passes, and pass overlap (when passes > 1) - e.g. "board_laser_P40pct_S900mmmin_B0.09mm_1x.nc". When power is set in LaserGRBL instead of FlatCAM, the tag reads "Pfull" (the file is written at full power) rather than showing the disabled/irrelevant Power % field. Makes it possible to tell two exports of the same board apart by filename alone once several material settings have been tried.
+
+18.07.2026  (8.998.10 - Fixed recurring "dataChanged() invalid index range" warning)
+
+- Core: ObjectCollection.update_view() (used by object rename, plot enable/disable, and every plot refresh - i.e. constantly during normal use) emitted the dataChanged() signal with two null QModelIndex(), which is invalid per the Qt model API (topLeft/bottomRight must be valid indices sharing the same parent) and logged a "dataChanged() called with an invalid index range" warning on every single call. Now emits one valid range per populated object group instead, preserving the same "refresh everything" behaviour without violating the model contract.
+
+18.07.2026  (8.998.9 - Job Automation panel: workflow simplification)
+
+- Job Automation: fixed a real correctness bug where a new plan silently defaulted to MM units regardless of the loaded project's actual units, so an inch board could be built with millimetre-scale step defaults (cut depth, tool diameters) without warning. The Units combo is now synced from the project on every open.
+- Job Automation: "Create Plan from Preset" and "Clear" now ask for confirmation before discarding an existing plan, instead of silently wiping any edits already made to it.
+- Job Automation: collapsed the two "Isolation routing" preset entries (which differed only in whether the Drills/Outline checkboxes were shown) into one - Drills/Outline are simply optional checkboxes now, removing a fake extra decision.
+- Job Automation: Drills is auto-selected when exactly one Excellon is already loaded (Outline can't be safely auto-picked - it's a Gerber object exactly like Top Copper, with no reliable way to tell them apart).
+- Job Automation: the Steps table and the per-step Settings form now live in a persistent, resizable split view directly next to each other, instead of being separated by the whole Quick Start section and step toolbar - tuning a step no longer requires scrolling down and back up repeatedly in the narrow sidebar panel.
+- Job Automation: the "Quick Start" board/preset section now auto-collapses (to a one-line toggle) once a plan exists, freeing vertical space for the table/settings; it re-expands automatically after Clear, or manually via the toggle.
+
 18.07.2026  (8.998.8 - Laser plugin fixes)
 
 - Laser: fixed the laser mode (Dynamic M4 / Constant M3) - and the other preset-owned parameters: power, speed, passes, air assist - being reset to the material preset's values every time the plugin was opened. set_tool_ui() restored the last used values first and then applied the preset on top of them, so a manual choice of Constant (M3) was silently replaced by the preset's Dynamic (M4) and the exported LaserGRBL file was generated in the wrong mode. The preset is now applied first and the last used values are restored after it.

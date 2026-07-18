@@ -23,15 +23,16 @@ if '_' not in builtins.__dict__:
 log = logging.getLogger('base')
 
 # Front-door presets: (label, preset_id, include_optional_drill_cutout)
+# Only two REAL choices - a prior third entry duplicated "iso_drill_cutout" and differed
+# only in whether the Drill/Outline checkboxes were shown, which is now handled by always
+# showing them (ticking them is what makes drilling/cutout optional, not a separate preset).
 _PRESETS = [
-    (_("Isolation routing"), "iso_drill_cutout", False),
-    (_("Isolation + Drilling + Cutout"), "iso_drill_cutout", True),
+    (_("Isolation routing"), "iso_drill_cutout", True),
     (_("Copper clear (NCC ground-plane)"), "ncc_groundplane", False),
 ]
 _PRESET_DESC = [
-    _("Isolate the selected Top Copper, make the CNC job and export."),
-    _("Isolate, then drill (Excellon) and cut out the board (Outline). "
-      "Pick those objects below."),
+    _("Isolate the Top Copper, make the CNC job and export. "
+      "Tick Drills and/or Outline below to also drill and cut out the board."),
     _("Clear all excess copper of the Top Copper, make the CNC job and export."),
 ]
 
@@ -112,17 +113,27 @@ class ToolJobAutomation(AppTool):
             self.ui.outdir_entry.set_value(self.app.options.get("tools_job_auto_output_dir", ""))
         except Exception:
             pass
+        # match the project's real units - a new plan defaults to MM regardless of the
+        # combo otherwise, silently producing an inch board with millimetre-scale defaults
+        try:
+            self.ui.units_combo.set_value(self.app.app_units.upper())
+        except Exception:
+            pass
         try:
             sel = self.app.collection.get_active()
             if sel is not None and sel.kind == 'gerber':
                 self.ui.top_combo.set_value(sel.obj_options['name'])
         except Exception:
             pass
+        self._auto_pick_drills()
 
         self.connect_signals_at_init()
         self._on_preset_changed(self.ui.preset_combo.currentIndex())
         self.build_table()
         self._clear_step_form()
+        # a plan already exists (e.g. reopening the tab): keep the Quick Start
+        # section out of the way instead of pushing the table/settings down again
+        self._set_quickstart_collapsed(bool(self.job.steps))
 
     def connect_signals_at_init(self):
         self.ui.top_import_btn.clicked.connect(lambda: self._import(self.app.f_handlers.open_gerber, True))
@@ -151,6 +162,15 @@ class ToolJobAutomation(AppTool):
         self.ui.save_job_btn.clicked.connect(self.on_save_job)
         self.ui.load_job_btn.clicked.connect(self.on_load_job)
         self.ui.reset_button.clicked.connect(self.set_tool_ui)
+        self.ui.quickstart_toggle_btn.clicked.connect(self._toggle_quickstart)
+
+    def _toggle_quickstart(self):
+        self._set_quickstart_collapsed(self.ui.quickstart_container.isVisible())
+
+    def _set_quickstart_collapsed(self, collapsed):
+        self.ui.quickstart_container.setVisible(not collapsed)
+        self.ui.quickstart_toggle_btn.setText(
+            _("▸ Quick Start (edit boards / preset)") if collapsed else _("▾ Quick Start"))
 
     # -------------------------------------------------------------- front door
     def _on_preset_changed(self, idx):
@@ -160,6 +180,32 @@ class ToolJobAutomation(AppTool):
         for w in (self.ui.drills_cb, self.ui.drills_combo, self.ui.drills_import_btn,
                   self.ui.outline_cb, self.ui.outline_combo, self.ui.outline_import_btn):
             w.setVisible(include_opt)
+
+    def _auto_pick_drills(self):
+        """If exactly one Excellon is loaded, tick Drills and select it - the common
+        single-drill-file case needs no manual combobox hunting. Outline is NOT
+        auto-picked: it is also a 'gerber' object like Top Copper, so there is no
+        reliable way to tell them apart automatically."""
+        try:
+            excellons = [o.obj_options['name'] for o in self.app.collection.get_list()
+                        if o.kind == 'excellon']
+        except Exception:
+            return
+        if len(excellons) == 1:
+            self.ui.drills_cb.set_value(True)
+            self.ui.drills_combo.set_value(excellons[0])
+
+    def _confirm_replace(self, count):
+        """Ask before an action would discard an existing, possibly-edited plan."""
+        if count <= 0:
+            return True
+        ret = QtWidgets.QMessageBox.question(
+            None, _("Replace current plan?"),
+            _("This will discard the current %d-step plan (including any edits you made "
+              "to its steps). Continue?") % count,
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No)
+        return ret == QtWidgets.QMessageBox.StandardButton.Yes
 
     def _browse_outdir(self):
         path = QtWidgets.QFileDialog.getExistingDirectory(None, _("Select Output Folder"), "")
@@ -177,6 +223,8 @@ class ToolJobAutomation(AppTool):
 
     def on_create_from_preset(self):
         from appAutomation import presets
+        if not self._confirm_replace(len(self.job.steps)):
+            return
         idx = self.ui.preset_combo.currentIndex()
         label, preset_id, include_opt = _PRESETS[idx]
 
@@ -204,6 +252,7 @@ class ToolJobAutomation(AppTool):
         self._normalize_steps()
         self.build_table()
         self._clear_step_form()
+        self._set_quickstart_collapsed(True)
         self.ui.status_label.setText(_("Created %d steps. Select a step to edit it.")
                                      % len(self.job.enabled_steps()))
         self.app.inform.emit('[success] %s' % _("Plan created. You can now edit each step."))
@@ -308,6 +357,7 @@ class ToolJobAutomation(AppTool):
         step = self.jm.Step(st, sch.default_params(st))
         self.job.add_step(step)
         self.build_table(select_uid=step.id)
+        self._set_quickstart_collapsed(True)
 
     def on_delete_step(self):
         t = self.ui.steps_table
@@ -346,9 +396,12 @@ class ToolJobAutomation(AppTool):
             self.build_table(select_uid=step.id)
 
     def on_clear(self):
+        if not self._confirm_replace(len(self.job.steps)):
+            return
         self.job.steps = []
         self.build_table()
         self._clear_step_form()
+        self._set_quickstart_collapsed(False)
         self.ui.status_label.setText(_("Plan cleared."))
 
     def on_reorder(self, *args):
@@ -710,6 +763,7 @@ class ToolJobAutomation(AppTool):
         self._normalize_steps()
         self.build_table()
         self._clear_step_form()
+        self._set_quickstart_collapsed(True)
         self.ui.status_label.setText(_("Loaded %d steps.") % len(self.job.steps))
         self.app.inform.emit('[success] %s' % (_("Job loaded: %s") % path))
 
@@ -728,10 +782,18 @@ class JobAutomationUI:
         title.setToolTip(_("Build and run a full board pipeline from loaded objects."))
         self.layout.addWidget(title)
 
-        # ---- Quick start -------------------------------------------------
-        self.layout.addWidget(FCLabel('%s' % _("Quick Start"), color='darkorange', bold=True))
+        # ---- Quick start (collapsible once a plan exists) -----------------
+        self.quickstart_toggle_btn = FCButton('%s' % _("▾ Quick Start"), bold=True)
+        self.quickstart_toggle_btn.setStyleSheet("text-align: left; border: none;")
+        self.layout.addWidget(self.quickstart_toggle_btn)
+
+        self.quickstart_container = QtWidgets.QWidget()
+        qs_v = QtWidgets.QVBoxLayout(self.quickstart_container)
+        qs_v.setContentsMargins(0, 0, 0, 0)
+        self.layout.addWidget(self.quickstart_container)
+
         qs = FCFrame()
-        self.layout.addWidget(qs)
+        qs_v.addWidget(qs)
         qg = GLay(v_spacing=4, h_spacing=3)
         qs.setLayout(qg)
 
@@ -778,10 +840,19 @@ class JobAutomationUI:
 
         self.create_btn = FCButton(_("Create Plan from Preset"), bold=True)
         self.create_btn.setIcon(QtGui.QIcon(self.app.resource_location + '/properties32.png'))
-        self.layout.addWidget(self.create_btn)
+        qs_v.addWidget(self.create_btn)
 
-        # ---- Steps -------------------------------------------------------
-        self.layout.addWidget(FCLabel('%s' % _("Steps"), color='blue', bold=True))
+        # ---- Steps + Step Settings, kept together in a splitter -----------
+        # so tuning a step never requires scrolling away from the table that selects it.
+        self.plan_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
+        self.layout.addWidget(self.plan_splitter, 1)
+
+        steps_pane = QtWidgets.QWidget()
+        steps_v = QtWidgets.QVBoxLayout(steps_pane)
+        steps_v.setContentsMargins(0, 0, 0, 0)
+        self.plan_splitter.addWidget(steps_pane)
+
+        steps_v.addWidget(FCLabel('%s' % _("Steps"), color='blue', bold=True))
         self.steps_table = FCTable(drag_drop=True)
         self.steps_table.setColumnCount(5)
         self.steps_table.setHorizontalHeaderLabels(['', _("#"), _("Step"), _("Status"), 'uid'])
@@ -792,11 +863,11 @@ class JobAutomationUI:
         hh.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.Stretch)
         hh.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         self.steps_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
-        self.steps_table.setMinimumHeight(150)
-        self.layout.addWidget(self.steps_table)
+        self.steps_table.setMinimumHeight(120)
+        steps_v.addWidget(self.steps_table, 1)
 
         tb = FCFrame()
-        self.layout.addWidget(tb)
+        steps_v.addWidget(tb)
         tbg = GLay(v_spacing=4, h_spacing=3)
         tb.setLayout(tbg)
         self.add_type_combo = FCComboBox()
@@ -816,15 +887,25 @@ class JobAutomationUI:
         tbg.addWidget(self.down_btn, 1, 2)
         tbg.addWidget(self.clear_btn, 2, 0, 1, 3)
 
-        # ---- Step settings (dynamic) ------------------------------------
-        self.layout.addWidget(FCLabel('%s' % _("Step Settings"), color='blue', bold=True))
+        # ---- Step settings (dynamic), the splitter's other pane ------------
+        settings_pane = QtWidgets.QWidget()
+        settings_v = QtWidgets.QVBoxLayout(settings_pane)
+        settings_v.setContentsMargins(0, 0, 0, 0)
+        self.plan_splitter.addWidget(settings_pane)
+
+        settings_v.addWidget(FCLabel('%s' % _("Step Settings"), color='blue', bold=True))
         self.settings_frame = FCFrame()
-        self.layout.addWidget(self.settings_frame)
+        settings_v.addWidget(self.settings_frame, 1)
         self.settings_layout = GLay(v_spacing=4, h_spacing=3)
         self.settings_frame.setLayout(self.settings_layout)
         self.settings_hint = FCLabel(_("Select a step above to edit its parameters."))
         self.settings_hint.setWordWrap(True)
         self.settings_layout.addWidget(self.settings_hint, 0, 0, 1, 2)
+        settings_v.addStretch(1)
+
+        self.plan_splitter.setStretchFactor(0, 1)
+        self.plan_splitter.setStretchFactor(1, 1)
+        self.plan_splitter.setSizes([260, 320])
 
         self.status_label = FCLabel(_("Create a plan or add steps to begin."))
         self.status_label.setWordWrap(True)
